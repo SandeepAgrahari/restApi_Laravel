@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\ApiController;
 use App\User;
 use Illuminate\Http\Request;
 
-class UserController extends Controller
+class UserController extends ApiController
 {
     /**
      * Display a listing of the resource.
@@ -16,7 +16,7 @@ class UserController extends Controller
     public function index()
     {
         $users = User::all();
-        return response()->json(['data'=>$users],200);
+        return $this->showAll($users);
         // return $users;
     }
 
@@ -45,7 +45,7 @@ class UserController extends Controller
 
         $user = User::create($data);
 
-        return response()->json(['data'=>$user], 200);
+        return $this->showOne($user, 201);
     }
 
     /**
@@ -57,7 +57,7 @@ class UserController extends Controller
     public function show($id)
     {
         $user = User::findOrFail($id);
-        return response()->json(['data'=>$user], 200);
+        return $this->showOne($user);
     }
 
     
@@ -71,7 +71,37 @@ class UserController extends Controller
      */
     public function update(Request $request, $id)
     {
-        //
+
+        $user = User::findOrFail($id);
+
+        $rules = [
+            'email'=>'email|unique:users, email,' . $user->id,
+            'password'=>'min:6|confirmed',
+            'admin' => 'in:' . User::ADMIN_USER . ',' . User::REGULAR_USER,
+        ];
+        if($request->has('name')){
+            $user->name = $request->name;
+        }
+        if($request->has('email') && $user->email != $request->email){
+            $user->varified = User::UNVARIFIED_USER;
+            $user->varification_token = User::generateVarificationCode();
+            $user->email = $request->email;
+        }
+        if($request->has('password')){
+            $user->password = bcrypt($request->password);
+        }
+        if($request->has('admin')){
+            if(!$user->isVarified()){
+                return $this->errorResponse('Only varified user can modify the admin field',409);
+            }
+            $user->admin = $request->admin;
+        }
+        if(!$user->isDirty()){
+            return $this->errorResponse('You need to specify some different vallue to update',422);
+        }
+        $user->save();
+        return $this->showOne($user);
+
     }
 
     /**
@@ -82,6 +112,8 @@ class UserController extends Controller
      */
     public function destroy($id)
     {
-        //
+        $user = User::findOrFail($id);
+        $user->delete();
+        return $this->showOne($user);
     }
 }
